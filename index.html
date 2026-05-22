@@ -415,8 +415,16 @@ let revChart=null,catChart=null,syncTimeout=null,isSyncing=false,portfolioFilter
 let fbReady=false,isListening=false,ignoreNextUpdate=false;
 
 // ── SKU helpers ──
+function recalcNextSku(){
+  // Always derive nextSku from existing inventory so Firebase loads never reset it
+  const inv=state.inventory||[];
+  if(!inv.length){state.nextSku=state.nextSku||1;return;}
+  const maxSku=inv.reduce((max,i)=>{const n=parseInt(i.sku);return(!isNaN(n)&&n>max)?n:max;},0);
+  state.nextSku=Math.max(maxSku+1,state.nextSku||1);
+}
 function getNextSku(){
-  const n=state.nextSku||1;
+  recalcNextSku();
+  const n=state.nextSku;
   state.nextSku=n+1;
   return String(n);
 }
@@ -976,6 +984,7 @@ async function init(){
   await new Promise(resolve=>{if(window._fbLoad){resolve();}else{window.addEventListener('firebase-ready',resolve,{once:true});}});
   fbReady=true;setLoading('Loading your data…');
   const cloudLoaded=await loadFromFirebase();if(!cloudLoaded)localLoad();
+  recalcNextSku(); // Always fix nextSku after any load
   if(state.bizName){showMain();}
   else{document.getElementById('loading-view').style.display='none';document.getElementById('setup-view').style.display='block';document.getElementById('biz-input').addEventListener('keydown',e=>{if(e.key==='Enter')startApp();});}
 }
