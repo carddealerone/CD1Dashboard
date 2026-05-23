@@ -9,8 +9,8 @@
 <title>PokéShop Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <!-- Firebase compat SDK — works on all browsers and GitHub Pages without CSP issues -->
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 <script>
   const firebaseConfig = {
     apiKey: "AIzaSyCsYLXPJX67BrzWLNThGMveQ6SUcJVdf0Y",
@@ -37,7 +37,7 @@
     db.ref(DATA_REF).on('value', (snap) => { if (snap.exists()) callback(snap.val()); });
   };
 
-  window.dispatchEvent(new Event('firebase-ready'));
+  // Firebase initialized — functions available globally
 </script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -733,7 +733,10 @@ function openAddTxn(eventId){
       <label>Payment via</label><select id="txn-payment">${payOpts}</select>
     </div>
     <div id="txn-purchase-fields" style="display:none">
-      <label>Purchase price ($)</label><input id="txn-purchase-price" type="number" min="0" step="0.01" placeholder="0.00"/>
+      <label>Purchase price / cost basis ($)</label><input id="txn-purchase-price" type="number" min="0" step="0.01" placeholder="0.00"/>
+      <label>Sale price ($) — for inventory listing</label><input id="txn-purchase-sale-price" type="number" min="0" step="0.01" placeholder="0.00 (optional)"/>
+      <label>SKU type</label><select id="txn-purchase-skutype"><option value="single">Single</option><option value="sealed">Sealed</option><option value="other">Other</option></select>
+      <label>Quantity purchased</label><input id="txn-purchase-qty" type="number" min="1" step="1" value="1" placeholder="1"/>
       <label>Payment method</label><select id="txn-purchase-payment">${payOpts}</select>
     </div>
     <div class="trade-fields" id="txn-trade-fields">
@@ -803,8 +806,23 @@ function saveEventTxn(eventId){
   } else if(type==='purchase'){
     txn.purchasePrice=parseFloat(document.getElementById('txn-purchase-price').value)||0;
     txn.payment=document.getElementById('txn-purchase-payment').value;
-    // Add stock if linked
-    if(linkedItem){linkedItem.stock=(linkedItem.stock||0)+1;}
+    const purchaseQty=parseInt(document.getElementById('txn-purchase-qty').value)||1;
+    txn.quantity=purchaseQty;
+    if(linkedItem){
+      // Existing inventory item — add stock
+      linkedItem.stock=(linkedItem.stock||0)+purchaseQty;
+      txn.inventoryId=linkedItem.id;txn.linkedSku=linkedItem.sku;
+    } else {
+      // No link — auto-create new inventory item from purchase
+      const sku=getNextSku();
+      const salePrice=parseFloat(document.getElementById('txn-purchase-sale-price').value)||0;
+      const skuType=document.getElementById('txn-purchase-skutype').value||'single';
+      const newItem={id:Date.now()+1,name:item,sku,skuType,price:salePrice,costBasis:txn.purchasePrice,stock:purchaseQty};
+      if(!state.inventory)state.inventory=[];
+      state.inventory.push(newItem);
+      txn.inventoryId=newItem.id;txn.linkedSku=sku;
+      showToast(`"${item}" added to inventory as SKU #${sku}`);
+    }
   } else if(type==='trade'){
     txn.gave=document.getElementById('txn-gave').value.trim();txn.received=document.getElementById('txn-received').value.trim();
     txn.salePrice=parseFloat(document.getElementById('txn-trade-recv-val').value)||0;
@@ -813,7 +831,7 @@ function saveEventTxn(eventId){
   if(!event.transactions)event.transactions=[];
   event.transactions.push(txn);
   save();closeModal();renderAll();
-  const typeLabel=type==='sale'?`Sale logged — added to Sales tab${linkedItem?' · Stock: '+linkedItem.stock+' remaining':''} ✓`:type==='purchase'?`Purchase logged — added to Costs tab${linkedItem?' · Stock: '+linkedItem.stock:''} ✓`:'Trade logged ✓';
+  const typeLabel=type==='sale'?`Sale logged — added to Sales tab${linkedItem?' · Stock: '+linkedItem.stock+' remaining':''} ✓`:type==='purchase'?`Purchase logged — added to Costs tab & inventory ✓`:'Trade logged ✓';
   showToast(typeLabel);
 }
 
@@ -824,8 +842,23 @@ function deleteEventTxn(eventId,txnId){
   if(txn&&txn.inventoryId){
     const item=(state.inventory||[]).find(i=>i.id===txn.inventoryId);
     if(item){
-      if(txn.type==='sale'){item.stock=(item.stock||0)+1;showToast('Transaction removed · Stock restored +1');}
-      else if(txn.type==='purchase'){item.stock=Math.max(0,(item.stock||0)-1);showToast('Transaction removed · Stock adjusted -1');}
+      if(txn.type==='sale'){
+        item.stock=(item.stock||0)+1;
+        showToast('Transaction removed · Stock restored +1');
+      } else if(txn.type==='purchase'){
+        const qty=txn.quantity||1;
+        // If this purchase originally created the item (stock == qty and only this txn references it), remove it
+        const otherRefs=(state.events||[]).flatMap(e=>(e.transactions||[])).filter(t=>t.id!==txn.id&&t.inventoryId===txn.inventoryId).length;
+        const manualRefs=(state.sales||[]).filter(s=>s.inventoryId===txn.inventoryId).length;
+        if(otherRefs===0&&manualRefs===0&&item.stock<=qty){
+          // Item was created by this purchase — remove it entirely
+          state.inventory=state.inventory.filter(i=>i.id!==txn.inventoryId);
+          showToast('Transaction removed · Inventory item removed');
+        } else {
+          item.stock=Math.max(0,(item.stock||0)-qty);
+          showToast('Transaction removed · Stock adjusted -'+qty);
+        }
+      }
     }
   } else {showToast('Transaction removed');}
   event.transactions=(event.transactions||[]).filter(t=>t.id!==txnId);
@@ -984,13 +1017,44 @@ function clearAllData(){if(!confirm('Delete ALL data from Firebase?'))return;sta
 function generateReport(){window.print();}
 
 async function init(){
-  applyTheme();setLoading('Connecting to Firebase…');
-  await new Promise(resolve=>{if(window._fbLoad){resolve();}else{window.addEventListener('firebase-ready',resolve,{once:true});}});
-  fbReady=true;setLoading('Loading your data…');
-  const cloudLoaded=await loadFromFirebase();if(!cloudLoaded)localLoad();
-  recalcNextSku(); // Always fix nextSku after any load
+  applyTheme();
+  setLoading('Connecting to Firebase…');
+
+  // Firebase scripts load synchronously in <head>, so _fbLoad is already defined.
+  // We just verify it exists; if not (e.g. CDN blocked), fall back gracefully.
+  const fbConnected = typeof window._fbLoad === 'function';
+  if(!fbConnected){
+    console.warn('Firebase SDK not loaded — CDN may be blocked. Running in local-only mode.');
+  }
+
+  if(fbConnected){
+    fbReady=true;
+    setLoading('Loading your data…');
+    try {
+      const cloudLoaded=await loadFromFirebase();
+      if(!cloudLoaded){
+        setLoading('No cloud data found — checking local backup…');
+        localLoad();
+      }
+    } catch(e) {
+      console.error('Firebase load error:',e);
+      localLoad();
+    }
+  } else {
+    // Firebase timed out — load from local storage and show offline indicator
+    setLoading('Firebase offline — loading local data…');
+    localLoad();
+    setSyncStatus('error');
+    showToast('⚠ Firebase offline — running on local data. Check your connection.');
+  }
+
+  recalcNextSku();
   if(state.bizName){showMain();}
-  else{document.getElementById('loading-view').style.display='none';document.getElementById('setup-view').style.display='block';document.getElementById('biz-input').addEventListener('keydown',e=>{if(e.key==='Enter')startApp();});}
+  else{
+    document.getElementById('loading-view').style.display='none';
+    document.getElementById('setup-view').style.display='block';
+    document.getElementById('biz-input').addEventListener('keydown',e=>{if(e.key==='Enter')startApp();});
+  }
 }
 init();
 </script>
