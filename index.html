@@ -579,7 +579,14 @@ function showMain(){
 function switchTab(name,el){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');document.getElementById('tab-'+name).classList.add('active');
-  if(name==='overview')renderCharts();if(name==='portfolio')renderPortfolio();if(name==='valhistory')renderValueHistory();if(name==='report')updateTokenStatus();
+  if(name==='overview')renderCharts();
+  if(name==='events'){renderEvents();}
+  if(name==='sales')renderSalesTable();
+  if(name==='inventory')renderInventory();
+  if(name==='costs')renderCosts();
+  if(name==='portfolio')renderPortfolio();
+  if(name==='valhistory')renderValueHistory();
+  if(name==='report')updateTokenStatus();
 }
 function setPeriod(p,el){
   state.period=p;document.querySelectorAll('.period-bar .pbtn').forEach(b=>b.classList.remove('active'));
