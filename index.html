@@ -18,7 +18,7 @@ const GH_FILE    = "data.json";               // file that stores your data in t
 const GH_API     = `https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/${GH_FILE}`;
 
 // ── IMPORTANT: paste your GitHub Personal Access Token between the quotes below ──
-const GITHUB_PAT = "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";  // <-- paste token here
+const GITHUB_PAT = "";  // <-- paste token here
 
 function ghHeaders(){
   return {
@@ -661,13 +661,14 @@ function skuTag(sku){return sku?`<span class="badge badge-sku">SKU #${sku}</span
 }
 
 function salesTableHTML(sales){
-  return`<table><thead><tr><th>Date</th><th>Item</th><th>SKU</th><th>Category</th><th>Payment</th><th>Amount</th><th>Profit</th><th>Source</th><th></th></tr></thead><tbody>`+
+  return`<table><thead><tr><th>Date</th><th>Item</th><th>SKU</th><th>Category</th><th>Payment</th><th>Amount</th><th>Profit</th><th>Sale source</th><th>Origin</th><th></th></tr></thead><tbody>`+
     sales.map(s=>{
       const pi=PI(s.type);
       const pc=s.costBasis!=null?`<span class="${(s.amount-s.costBasis)>=0?'profit-pos':'profit-neg'}">$${(s.amount-s.costBasis).toFixed(2)}</span>`:`<span style="color:var(--pk-muted)">—</span>`;
       const sourceBadge=s.source==='event'?`<span class="badge badge-event" title="${s.eventName}">📅 ${s.eventName}</span>`:`<span style="color:var(--pk-muted);font-size:11px">Manual</span>`;
       const delBtn=s.source==='manual'?`<button class="btn-secondary" style="padding:2px 7px;font-size:11px" onclick="deleteSale('${s.id}')">✕</button>`:`<span style="color:var(--pk-muted);font-size:11px">—</span>`;
-      return`<tr><td>${new Date(s.date).toLocaleDateString()}</td><td>${s.item||'—'}</td><td>${skuTag(s.sku)}</td><td>${s.category||'—'}</td><td><span class="badge ${pi.badge}">${pi.label}</span></td><td>$${s.amount.toFixed(2)}</td><td>${pc}</td><td>${sourceBadge}</td><td>${delBtn}</td></tr>`;
+      const saleSource=s.saleSource?`<span style="font-size:11px;color:var(--pk-muted)">${s.saleSource}</span>`:'<span style="color:var(--pk-muted)">—</span>';
+      return`<tr><td>${new Date(s.date).toLocaleDateString()}</td><td>${s.item||'—'}</td><td>${skuTag(s.sku)}</td><td>${s.category||'—'}</td><td><span class="badge ${pi.badge}">${pi.label}</span></td><td>$${s.amount.toFixed(2)}</td><td>${pc}</td><td>${saleSource}</td><td>${sourceBadge}</td><td>${delBtn}</td></tr>`;
     }).join('')+'</tbody></table>';
 }
 function renderRecentSales(){const sales=getFilteredSales().slice(0,10);document.getElementById('recent-sales-table').innerHTML=sales.length?salesTableHTML(sales):'<div class="empty">No sales in this period.</div>';}
@@ -720,6 +721,8 @@ function openQuickSell(itemId){
     <input id="qs-price" type="number" min="0" step="0.01" value="${(item.price||0).toFixed(2)}" oninput="updateQSProfit(${item.costBasis||0})"/>
     <div id="qs-profit-preview" style="font-size:11px;color:var(--pk-muted);margin-top:5px"></div>
     <label>Payment type</label><select id="qs-type">${payOpts}</select>
+    <label>Source <span style="color:var(--pk-muted);font-weight:400">(where / who you sold to)</span></label>
+    <input id="qs-source" type="text" placeholder="e.g. Card show, eBay, local buyer, Instagram…"/>
     <label>Date</label><input id="qs-date" type="date" value="${new Date().toISOString().slice(0,10)}"/>
     <div style="display:flex;gap:7px;justify-content:flex-end;margin-top:14px">
       <button class="btn-secondary" onclick="closeModal()">Cancel</button>
@@ -733,7 +736,8 @@ function confirmQuickSell(itemId){
   const item=(state.inventory||[]).find(i=>i.id===itemId);if(!item)return;
   const price=parseFloat(document.getElementById('qs-price').value);if(!price||isNaN(price)){alert('Please enter a valid price.');return;}
   if(!state.sales)state.sales=[];
-  state.sales.push({id:Date.now(),item:item.name,amount:price,date:document.getElementById('qs-date').value,type:document.getElementById('qs-type').value,category:item.skuType==='sealed'?'Sealed':item.skuType==='single'?'Singles':'Other',costBasis:item.costBasis||0,fromInventory:true,inventoryId:item.id,sku:item.sku});
+  const source=(document.getElementById('qs-source').value||'').trim();
+  state.sales.push({id:Date.now(),item:item.name,amount:price,date:document.getElementById('qs-date').value,type:document.getElementById('qs-type').value,category:item.skuType==='sealed'?'Sealed':item.skuType==='single'?'Singles':'Other',costBasis:item.costBasis||0,fromInventory:true,inventoryId:item.id,sku:item.sku,saleSource:source||null});
   item.stock=Math.max(0,item.stock-1);
   save();closeModal();renderAll();showToast(`Sold "${item.name}" (SKU #${item.sku}) — ${item.stock} remaining`);
 }
@@ -1029,6 +1033,8 @@ function openModal(type){
     <label>Category</label><select id="m-cat"><option>Singles</option><option>Sealed</option><option>Accessories</option><option>Other</option></select>
     <label>Payment type</label><select id="m-type">${payOpts}</select>
     <label>Amount ($)</label><input id="m-amount" type="number" min="0" step="0.01" placeholder="0.00"/>
+    <label>Source <span style="color:var(--pk-muted);font-weight:400">(where / who you sold to)</span></label>
+    <input id="m-source" type="text" placeholder="e.g. Card show, eBay, local buyer, Instagram…"/>
     <label>Date</label><input id="m-date" type="date" value="${today}"/>
     <div class="btn-row"><button class="btn-secondary" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="saveSale()">Add sale</button></div>
   </div></div>`;}
@@ -1071,7 +1077,8 @@ function saveSale(){
   const linkedId=document.getElementById('m-inv-link')?.value||null;
   const linkedItem=linkedId?(state.inventory||[]).find(i=>i.id==linkedId):null;
   if(!state.sales)state.sales=[];
-  state.sales.push({id:Date.now(),item:document.getElementById('m-item').value.trim()||'—',amount,date:document.getElementById('m-date').value,type:document.getElementById('m-type').value,category:document.getElementById('m-cat').value,costBasis:linkedItem?linkedItem.costBasis:null,inventoryId:linkedItem?linkedItem.id:null,sku:linkedItem?linkedItem.sku:null});
+  const saleSource=(document.getElementById('m-source')?.value||'').trim()||null;
+  state.sales.push({id:Date.now(),item:document.getElementById('m-item').value.trim()||'—',amount,date:document.getElementById('m-date').value,type:document.getElementById('m-type').value,category:document.getElementById('m-cat').value,costBasis:linkedItem?linkedItem.costBasis:null,inventoryId:linkedItem?linkedItem.id:null,sku:linkedItem?linkedItem.sku:null,saleSource});
   if(linkedItem&&linkedItem.stock>0){linkedItem.stock=Math.max(0,linkedItem.stock-1);}
   save();closeModal();renderAll();showToast(`Sale added${linkedItem?' · SKU #'+linkedItem.sku+' stock: '+linkedItem.stock:''} ✓`);
 }
