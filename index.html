@@ -699,7 +699,10 @@ function renderInventory(){
       <div style="font-size:11px;color:var(--pk-muted);margin-bottom:2px">Cost: $${cost.toFixed(2)} · Line: <span style="color:#fbbf24">$${lineRetail.toFixed(2)}</span></div>
       ${marginBarHTML(price,cost)}
       <button class="btn-sell" onclick="openQuickSell(${i.id})" ${sd}>⚡ Quick sell</button>
-      <button class="btn-secondary" style="width:100%;margin-top:5px;font-size:11px;padding:3px" onclick="deleteItem(${i.id})">🗑 Remove</button>
+      <div style="display:flex;gap:5px;margin-top:5px">
+        <button class="btn-secondary" style="flex:1;font-size:11px;padding:3px" onclick="openEditItem(${i.id})">✏️ Edit</button>
+        <button class="btn-secondary" style="flex:1;font-size:11px;padding:3px" onclick="deleteItem(${i.id})">🗑 Remove</button>
+      </div>
     </div>`;
   }).join('');
 }
@@ -1282,6 +1285,55 @@ function updateTokenStatus(){
 function renderAll(){renderKPIs();renderRecentSales();renderSalesTable();renderInventory();renderCosts();renderEvents();setTimeout(renderCharts,100);}
 
 function deleteSale(id){state.sales=(state.sales||[]).filter(s=>s.id!=id);save();renderAll();}
+function openEditItem(itemId){
+  const item=(state.inventory||[]).find(i=>i.id===itemId);if(!item)return;
+  document.getElementById('modal-container').innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <h3>✏️ Edit — SKU #${item.sku} <button onclick="closeModal()" style="background:none;border:none;cursor:pointer;color:var(--pk-muted);font-size:18px">✕</button></h3>
+    <div style="font-size:13px;font-weight:500;color:var(--pk-text);margin-bottom:12px">${item.name}</div>
+    <label>Item name</label>
+    <input id="ei-name" type="text" value="${item.name}"/>
+    <label>SKU type</label>
+    <select id="ei-skutype">
+      <option value="single" ${item.skuType==='single'?'selected':''}>Single</option>
+      <option value="sealed" ${item.skuType==='sealed'?'selected':''}>Sealed</option>
+      <option value="other" ${item.skuType==='other'?'selected':''}>Other</option>
+    </select>
+    <label>Sale price ($)</label>
+    <input id="ei-price" type="number" min="0" step="0.01" value="${(item.price||0).toFixed(2)}"/>
+    <label>Cost basis ($)</label>
+    <input id="ei-cost" type="number" min="0" step="0.01" value="${(item.costBasis||0).toFixed(2)}"/>
+    <label>Stock quantity</label>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+      <button onclick="stepQty(-1)" style="width:32px;height:32px;font-size:18px;border:0.5px solid var(--pk-border);border-radius:var(--radius-sm);background:var(--pk-surface2);color:var(--pk-text);cursor:pointer;display:flex;align-items:center;justify-content:center">−</button>
+      <input id="ei-stock" type="number" min="0" step="1" value="${item.stock||0}" style="flex:1;text-align:center;font-size:16px;font-weight:600;padding:6px"/>
+      <button onclick="stepQty(1)" style="width:32px;height:32px;font-size:18px;border:0.5px solid var(--pk-border);border-radius:var(--radius-sm);background:var(--pk-surface2);color:var(--pk-text);cursor:pointer;display:flex;align-items:center;justify-content:center">+</button>
+    </div>
+    <div style="font-size:11px;color:var(--pk-muted);margin-top:4px">Current: ${item.stock||0} · Type a number or use + / − to adjust</div>
+    <div style="display:flex;gap:7px;justify-content:flex-end;margin-top:16px">
+      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveEditItem(${item.id})">Save changes</button>
+    </div>
+  </div></div>`;
+}
+function stepQty(delta){
+  const el=document.getElementById('ei-stock');
+  if(!el)return;
+  el.value=Math.max(0,(parseInt(el.value)||0)+delta);
+}
+function saveEditItem(itemId){
+  const item=(state.inventory||[]).find(i=>i.id===itemId);if(!item)return;
+  const newStock=Math.max(0,parseInt(document.getElementById('ei-stock').value)||0);
+  const oldStock=item.stock||0;
+  item.name=document.getElementById('ei-name').value.trim()||item.name;
+  item.skuType=document.getElementById('ei-skutype').value;
+  item.price=parseFloat(document.getElementById('ei-price').value)||0;
+  item.costBasis=parseFloat(document.getElementById('ei-cost').value)||0;
+  item.stock=newStock;
+  save();closeModal();renderAll();
+  const diff=newStock-oldStock;
+  const diffStr=diff===0?'unchanged':(diff>0?`+${diff}`:String(diff));
+  showToast(`SKU #${item.sku} updated · Stock: ${newStock} (${diffStr}) ✓`);
+}
 function deleteItem(id){state.inventory=(state.inventory||[]).filter(i=>i.id!==id);save();renderAll();}
 function deleteCost(id){state.costs=(state.costs||[]).filter(c=>c.id!=id);save();renderCosts();renderKPIs();}
 function deleteEvent(id){if(!confirm('Delete this show and all its transactions?'))return;state.events=(state.events||[]).filter(e=>e.id!==id);save();renderAll();}
