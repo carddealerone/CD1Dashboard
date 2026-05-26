@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -8,36 +8,74 @@
 <meta http-equiv="Expires" content="0"/>
 <title>PokéShop Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-<!-- Firebase compat SDK — works on all browsers and GitHub Pages without CSP issues -->
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 <script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyCsYLXPJX67BrzWLNThGMveQ6SUcJVdf0Y",
-    authDomain: "cd1-dashboard.firebaseapp.com",
-    databaseURL: "https://cd1-dashboard-default-rtdb.firebaseio.com",
-    projectId: "cd1-dashboard",
-    storageBucket: "cd1-dashboard.firebasestorage.app",
-    messagingSenderId: "956522084378",
-    appId: "1:956522084378:web:739a9cbb6c338d095fb9a3"
-  };
+// ── GitHub API storage — data.json lives in your repo, works from any device ──
+// SETUP: Replace these three values with your own
+const GH_USER    = "carddealerone";           // your GitHub username
+const GH_REPO    = "pokeshop-dashboard";      // your repo name
+const GH_TOKEN   = "";                        // GitHub Personal Access Token (filled in below)
+const GH_FILE    = "data.json";               // file that stores your data in the repo
+const GH_API     = `https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/${GH_FILE}`;
 
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
-  const DATA_REF = "pokeshop/data";
+// ── IMPORTANT: paste your GitHub Personal Access Token between the quotes below ──
+const GITHUB_PAT = "";  // <-- paste token here
 
-  window._fbSave = async function(data) {
-    try { await db.ref(DATA_REF).set(data); return true; } catch(e) { console.error('FB save:', e); return false; }
+function ghHeaders(){
+  return {
+    "Authorization": "token " + GITHUB_PAT,
+    "Content-Type":  "application/json",
+    "Accept":        "application/vnd.github.v3+json"
   };
-  window._fbLoad = async function() {
-    try { const snap = await db.ref(DATA_REF).get(); if (snap.exists()) return snap.val(); } catch(e) { console.error('FB load:', e); }
-    return null;
-  };
-  window._fbListen = function(callback) {
-    db.ref(DATA_REF).on('value', (snap) => { if (snap.exists()) callback(snap.val()); });
-  };
+}
 
-  // Firebase initialized — functions available globally
+window._fbSave = async function(data) {
+  if(!GITHUB_PAT){ console.warn("No GitHub token set"); return false; }
+  try {
+    // Get current file SHA (needed for updates)
+    let sha = null;
+    const get = await fetch(GH_API, { headers: ghHeaders() });
+    if(get.ok){ const j = await get.json(); sha = j.sha; }
+
+    const body = { message: "Dashboard sync " + new Date().toISOString(),
+                   content: btoa(unescape(encodeURIComponent(JSON.stringify(data)))) };
+    if(sha) body.sha = sha;
+
+    const put = await fetch(GH_API, { method:"PUT", headers:ghHeaders(), body:JSON.stringify(body) });
+    return put.ok;
+  } catch(e){ console.error("GH save error:", e); return false; }
+};
+
+window._fbLoad = async function() {
+  if(!GITHUB_PAT){ console.warn("No GitHub token — loading local only"); return null; }
+  try {
+    const res = await fetch(GH_API, { headers: ghHeaders() });
+    if(!res.ok) return null;
+    const j = await res.json();
+    if(!j.content) return null;
+    const decoded = decodeURIComponent(escape(atob(j.content.replace(/
+/g,""))));
+    return JSON.parse(decoded);
+  } catch(e){ console.error("GH load error:", e); return null; }
+};
+
+// Poll for cross-device updates every 20 seconds
+window._fbListen = function(callback) {
+  if(!GITHUB_PAT) return;
+  let lastSha = null;
+  setInterval(async () => {
+    try {
+      const res = await fetch(GH_API, { headers: ghHeaders() });
+      if(!res.ok) return;
+      const j = await res.json();
+      if(lastSha && j.sha !== lastSha){
+        const decoded = decodeURIComponent(escape(atob(j.content.replace(/
+/g,""))));
+        callback(JSON.parse(decoded));
+      }
+      lastSha = j.sha;
+    } catch(e){}
+  }, 20000);
+};
 </script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -211,6 +249,32 @@ tr:hover td{background:var(--pk-surface2)}
 .stock-change{font-size:11px;padding:3px 8px;border-radius:99px;margin-left:5px}
 .stock-down{background:#3a1010;color:#f87171}.pk-light .stock-down{background:#fdecea;color:#b02020}
 .stock-up{background:#1a4a2a;color:#5fd98a}.pk-light .stock-up{background:#e8f8ee;color:#1a7a3c}
+/* Photo attachment */
+.photo-upload-btn{display:flex;align-items:center;gap:6px;padding:6px 10px;font-size:12px;border:0.5px dashed var(--pk-border);border-radius:var(--radius-sm);cursor:pointer;background:var(--pk-surface2);color:var(--pk-muted);width:100%;margin-top:8px;justify-content:center}
+.photo-upload-btn:hover{border-color:var(--pk-red);color:var(--pk-red)}
+.photo-preview{position:relative;margin-top:8px;border-radius:var(--radius-sm);overflow:hidden;max-height:180px;display:flex;align-items:center;justify-content:center;background:var(--pk-surface2)}
+.photo-preview img{max-width:100%;max-height:180px;object-fit:contain;border-radius:var(--radius-sm)}
+.photo-del{position:absolute;top:5px;right:5px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;line-height:1}
+.txn-thumb{width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0;cursor:pointer;border:0.5px solid var(--pk-border)}
+/* Collapse toggle */
+.collapse-btn{background:none;border:none;color:var(--pk-muted);cursor:pointer;font-size:12px;padding:2px 6px;border-radius:var(--radius-sm);display:flex;align-items:center;gap:4px}
+.collapse-btn:hover{background:var(--pk-surface2);color:var(--pk-text)}
+.txn-section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.txn-section-title{font-size:12px;font-weight:500;color:var(--pk-text)}
+.txn-section-hint{font-size:11px;color:var(--pk-muted);font-weight:400}
+/* Confirm modal */
+.confirm-modal{background:var(--pk-surface);border-radius:var(--radius);padding:28px 24px;width:340px;max-width:95vw;border:0.5px solid var(--pk-border);text-align:center}
+.confirm-modal h3{font-size:16px;font-weight:600;color:var(--pk-text);margin-bottom:10px}
+.confirm-modal p{font-size:13px;color:var(--pk-muted);line-height:1.6;margin-bottom:20px}
+.confirm-modal .btn-danger{padding:8px 20px;font-size:13px;border:none;background:#ef4444;color:#fff;border-radius:var(--radius-sm);cursor:pointer;font-weight:500}
+.confirm-modal .btn-danger:hover{background:#dc2626}
+/* Lightbox */
+.lightbox{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:200;cursor:zoom-out}
+.lightbox img{max-width:92vw;max-height:92vh;object-fit:contain;border-radius:var(--radius)}
+/* Value history */
+.vh-delta-pos{color:#4ade80;font-size:11px}.pk-light .vh-delta-pos{color:#1a7a3c}
+.vh-delta-neg{color:#f87171;font-size:11px}.pk-light .vh-delta-neg{color:#b02020}
+.vh-delta-neu{color:var(--pk-muted);font-size:11px}
 </style>
 </head>
 <body>
@@ -224,7 +288,7 @@ tr:hover td{background:var(--pk-surface2)}
         <div class="dot dot-green" id="sync-dot"></div>
         <span id="sync-label">Synced</span>
       </div>
-      <button class="sync-btn" id="sync-btn" onclick="manualSync()" style="display:none">☁ Sync</button>
+      <button class="sync-btn" id="sync-btn" onclick="manualSync()" style="display:none">☁ Save</button>
       <button class="dark-toggle" id="dark-btn" onclick="toggleDark()">◑ Light</button>
     </div>
   </div>
@@ -253,6 +317,7 @@ tr:hover td{background:var(--pk-surface2)}
       <div class="tab" onclick="switchTab('costs',this)">💸 Costs</div>
       <div class="tab" onclick="switchTab('events',this)">📅 Events</div>
       <div class="tab" onclick="switchTab('portfolio',this)">📈 Portfolio</div>
+      <div class="tab" onclick="switchTab('valhistory',this)">📊 Value History</div>
       <div class="tab" onclick="switchTab('report',this)">📄 Report</div>
     </div>
 
@@ -371,6 +436,31 @@ tr:hover td{background:var(--pk-surface2)}
       <div class="card"><div class="table-wrap" id="portfolio-table"></div></div>
     </div>
 
+    <div class="panel" id="tab-valhistory">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+        <div>
+          <div style="font-size:15px;font-weight:600;color:var(--pk-text)">Inventory Value History</div>
+          <div style="font-size:12px;color:var(--pk-muted);margin-top:2px">A snapshot is saved automatically each time you open the dashboard</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="pbtn active" id="vh-7" onclick="setVhRange(7,this)">7d</button>
+          <button class="pbtn" id="vh-30" onclick="setVhRange(30,this)">30d</button>
+          <button class="pbtn" id="vh-90" onclick="setVhRange(90,this)">90d</button>
+          <button class="pbtn" id="vh-all" onclick="setVhRange(0,this)">All</button>
+          <button class="btn-secondary" onclick="manualSnapshot()" style="font-size:12px;padding:4px 10px">📸 Snapshot now</button>
+          <button class="btn-secondary" onclick="clearSnapshots()" style="font-size:12px;padding:4px 10px;color:#f87171">🗑 Clear history</button>
+        </div>
+      </div>
+      <div class="kpi-grid" id="vh-kpis"></div>
+      <div class="card" style="margin-bottom:12px">
+        <div style="height:220px;position:relative"><canvas id="vhChart"></canvas></div>
+      </div>
+      <div class="card">
+        <div style="font-size:13px;font-weight:500;color:var(--pk-text);margin-bottom:10px">Snapshot log</div>
+        <div class="table-wrap" id="vh-table"></div>
+      </div>
+    </div>
+
     <div class="panel" id="tab-report">
       <div class="section-title">Generate PDF report</div>
       <div class="two-col">
@@ -390,9 +480,10 @@ tr:hover td{background:var(--pk-surface2)}
           <button class="btn-primary" style="margin-top:12px;width:100%" onclick="generateReport()">📄 Generate & print PDF</button>
         </div>
         <div class="card" style="min-width:190px">
-          <div class="section-title" style="margin-top:0">Firebase sync</div>
-          <p style="font-size:12px;color:var(--pk-muted);line-height:1.6;margin-bottom:12px">Data syncs in real time. Open on any device at <strong>carddealerone.github.io/pokeshop-dashboard</strong></p>
-          <button class="btn-secondary" style="width:100%;margin-bottom:7px" onclick="manualSync()">☁ Force sync now</button>
+          <div class="section-title" style="margin-top:0">GitHub sync</div>
+          <div id="gh-token-status" style="font-size:12px;border-radius:var(--radius-sm);padding:8px 10px;margin-bottom:10px;background:var(--pk-surface2)">Checking token…</div>
+          <p style="font-size:12px;color:var(--pk-muted);line-height:1.6;margin-bottom:12px">Data saves to your GitHub repo and loads on any device at <strong>carddealerone.github.io/pokeshop-dashboard</strong></p>
+          <button class="btn-secondary" style="width:100%;margin-bottom:7px" onclick="manualSync()">☁ Save to GitHub now</button>
           <button class="btn-secondary" style="width:100%;margin-bottom:7px" onclick="exportBackup()">⬇ Export backup (.json)</button>
           <button class="btn-secondary" style="width:100%" onclick="document.getElementById('bk-import').click()">⬆ Restore from backup</button>
           <input type="file" id="bk-import" accept=".json" style="display:none" onchange="importBackup(this)"/>
@@ -414,8 +505,8 @@ const PAYMENT_TYPES=[
 ];
 function PI(t){return PAYMENT_TYPES.find(p=>p.value===t)||{label:t,badge:'badge-cash',color:'#888'};}
 
-let state={bizName:'',sales:[],inventory:[],costs:[],events:[],taxRate:5.5,period:'today',dark:true,nextSku:1};
-let revChart=null,catChart=null,syncTimeout=null,isSyncing=false,portfolioFilter='all';
+let state={bizName:'',sales:[],inventory:[],costs:[],events:[],taxRate:5.5,period:'today',dark:true,nextSku:1,valueSnapshots:[]};
+let revChart=null,catChart=null,vhChart=null,syncTimeout=null,isSyncing=false,portfolioFilter='all',vhRange=7;
 let fbReady=false,isListening=false,ignoreNextUpdate=false;
 
 // ── SKU helpers ──
@@ -448,13 +539,13 @@ function setLoading(msg){const el=document.getElementById('loading-msg');if(el)e
 function setSyncStatus(s){
   const dot=document.getElementById('sync-dot'),lbl=document.getElementById('sync-label'),ind=document.getElementById('sync-indicator'),btn=document.getElementById('sync-btn');
   if(!dot)return;ind.style.display='flex';btn.style.display='flex';dot.className='dot';
-  if(s==='synced'){dot.classList.add('dot-green');lbl.textContent='Live ✓';}
+  if(s==='synced'){dot.classList.add('dot-green');lbl.textContent='Synced ✓';}
   else if(s==='syncing'){dot.classList.add('dot-yellow');lbl.textContent='Saving…';}
   else{dot.classList.add('dot-red');lbl.textContent='Sync error';}
 }
 async function saveToFirebase(){
   if(!fbReady||isSyncing)return;isSyncing=true;setSyncStatus('syncing');
-  try{ignoreNextUpdate=true;setTimeout(()=>{ignoreNextUpdate=false;},3000);const ok=await window._fbSave(JSON.parse(JSON.stringify(state)));setSyncStatus(ok?'synced':'error');if(!ok)showToast('Sync failed — check Firebase rules.');}
+  try{ignoreNextUpdate=true;setTimeout(()=>{ignoreNextUpdate=false;},3000);const ok=await window._fbSave(JSON.parse(JSON.stringify(state)));setSyncStatus(ok?'synced':'error');if(!ok)showToast('Sync failed — check your GitHub token.');}
   catch(e){setSyncStatus('error');}isSyncing=false;
 }
 async function loadFromFirebase(){
@@ -482,11 +573,13 @@ function showMain(){
   document.getElementById('biz-display').textContent=state.bizName;document.getElementById('biz-display').style.display='';
   document.getElementById('report-biz').value=state.bizName;document.getElementById('tax-rate').value=state.taxRate;
   setSyncStatus('synced');startRealtimeListener();renderAll();
+  // Take daily snapshot after data loads
+  setTimeout(takeSnapshot,1200);
 }
 function switchTab(name,el){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');document.getElementById('tab-'+name).classList.add('active');
-  if(name==='overview')renderCharts();if(name==='portfolio')renderPortfolio();
+  if(name==='overview')renderCharts();if(name==='portfolio')renderPortfolio();if(name==='valhistory')renderValueHistory();if(name==='report')updateTokenStatus();
 }
 function setPeriod(p,el){
   state.period=p;document.querySelectorAll('.period-bar .pbtn').forEach(b=>b.classList.remove('active'));
@@ -660,6 +753,16 @@ function renderCosts(){
 }
 function tagClass(cat){const c=(cat||'').toLowerCase();if(c.includes('gas'))return'tag-gas';if(c.includes('ship'))return'tag-ship';if(c.includes('fee')||c.includes('table'))return'tag-fee';if(c.includes('purchase'))return'tag-purchase';return'tag-other';}
 
+function toggleTxnLog(id,btn){
+  const el=document.getElementById(id);
+  const arrow=document.getElementById(id+'_arrow');
+  const lbl=document.getElementById(id+'_lbl');
+  if(!el)return;
+  const isHidden=el.style.display==='none';
+  el.style.display=isHidden?'flex':'none';
+  if(arrow)arrow.textContent=isHidden?'▼':'▶';
+  if(lbl)lbl.textContent=isHidden?'Hide':'Show';
+}
 function txnTypeBadge(type){if(type==='sale')return'<span class="badge badge-sale">Sale</span>';if(type==='purchase')return'<span class="badge badge-purchase">Purchase</span>';if(type==='trade')return'<span class="badge badge-trade">Trade</span>';return`<span class="badge">${type}</span>`;}
 function txnAmountDisplay(t){if(t.type==='sale')return`<span class="profit-pos">+$${(t.salePrice||0).toFixed(2)}</span>`;if(t.type==='purchase')return`<span style="color:#60a5fa">-$${(t.purchasePrice||0).toFixed(2)}</span>`;if(t.type==='trade'){const val=((t.salePrice||0)-(t.purchasePrice||0));return`<span class="${val>=0?'profit-pos':val<0?'profit-neg':'profit-neu'}">${val>=0?'+':''}$${val.toFixed(2)}</span>`;}return'—';}
 
@@ -683,7 +786,8 @@ function renderEvents(){
       const inv=t.inventoryId?(state.inventory||[]).find(i=>i.id===t.inventoryId):null;
       const skuInfo=t.linkedSku?`<span class="badge badge-sku" style="margin-left:4px">SKU #${t.linkedSku}</span>`:'';
       const stockInfo=t.type==='sale'&&inv?`<span class="stock-change stock-down">↓${inv.stock}</span>`:(t.type==='purchase'&&inv?`<span class="stock-change stock-up">↑${inv.stock}</span>`:'');
-      return`<div class="txn-row">${txnTypeBadge(t.type)}<span class="txn-name">${t.item||'—'}${skuInfo}${stockInfo}</span><span class="txn-detail">${t.type==='trade'?`${t.gave||'?'} ↔ ${t.received||'?'}`:PI(t.payment||'cash').label}</span><span class="txn-amt">${txnAmountDisplay(t)}</span><button class="txn-del" onclick="deleteEventTxn(${e.id},${t.id})">✕</button></div>`;
+      const thumb=t.photo?`<img src="${t.photo}" class="txn-thumb" onclick="openLightbox('${t.photo}')" title="Click to view photo"/>`:'';
+      return`<div class="txn-row">${thumb}${txnTypeBadge(t.type)}<span class="txn-name">${t.item||'—'}${skuInfo}${stockInfo}</span><span class="txn-detail">${t.type==='trade'?`${t.gave||'?'} ↔ ${t.received||'?'}`:PI(t.payment||'cash').label}</span><span class="txn-amt">${txnAmountDisplay(t)}</span><button class="txn-del" onclick="deleteEventTxn(${e.id},${t.id})">✕</button></div>`;
     }).join(''):'<div class="empty" style="padding:12px">No transactions yet. Hit + Log to add sales, purchases, and trades.</div>';
     return`<div class="event-card">
       <div class="event-header">
@@ -699,8 +803,16 @@ function renderEvents(){
         ${eTrades?`<div class="event-kpi"><label>Trades</label><div class="val" style="color:#c084fc">${eTrades}</div></div>`:''}
       </div>
       <div class="event-txn-section">
-        <div style="font-size:12px;font-weight:500;color:var(--pk-text);margin-bottom:8px">Transaction log (${txns.length}) <span style="font-size:11px;color:var(--pk-muted);font-weight:400">— link to inventory by SKU or name to auto-adjust stock</span></div>
-        <div class="txn-list">${txnRows}</div>
+        <div class="txn-section-header">
+          <div>
+            <span class="txn-section-title">Transaction log (${txns.length})</span>
+            <span class="txn-section-hint"> — link to inventory by SKU or name to auto-adjust stock</span>
+          </div>
+          <button class="collapse-btn" onclick="toggleTxnLog('txnlog_${e.id}',this)">
+            <span id="txnlog_${e.id}_arrow">▼</span> <span id="txnlog_${e.id}_lbl">Hide</span>
+          </button>
+        </div>
+        <div id="txnlog_${e.id}" class="txn-list">${txnRows}</div>
       </div>
     </div>`;
   }).join('');
@@ -747,6 +859,10 @@ function openAddTxn(eventId){
     </div>
     <label>Notes (optional)</label><input id="txn-notes" type="text" placeholder="e.g. Sold to repeat customer"/>
     <label>Date</label><input id="txn-date" type="date" value="${today}"/>
+    <label>Attach photo (optional)</label>
+    <input type="file" id="txn-photo-input" accept="image/*" style="display:none" onchange="previewTxnPhoto()"/>
+    <div id="txn-photo-preview"></div>
+    <label class="photo-upload-btn" for="txn-photo-input">📷 Tap to attach photo</label>
     <div style="display:flex;gap:7px;justify-content:flex-end;margin-top:14px">
       <button class="btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn-primary" onclick="saveEventTxn(${eventId})">Add transaction</button>
@@ -754,6 +870,26 @@ function openAddTxn(eventId){
   </div></div>`;
 }
 
+function previewTxnPhoto(){
+  const input=document.getElementById('txn-photo-input');
+  if(!input||!input.files[0])return;
+  const file=input.files[0];
+  const reader=new FileReader();
+  reader.onload=function(e){
+    const prev=document.getElementById('txn-photo-preview');
+    if(prev)prev.innerHTML=`<div class="photo-preview"><img src="${e.target.result}" alt="photo"/><button class="photo-del" onclick="removeTxnPhoto()">✕</button></div>`;
+  };
+  reader.readAsDataURL(file);
+}
+function removeTxnPhoto(){
+  const prev=document.getElementById('txn-photo-preview');
+  const input=document.getElementById('txn-photo-input');
+  if(prev)prev.innerHTML='';
+  if(input)input.value='';
+}
+function openLightbox(src){
+  document.body.insertAdjacentHTML('beforeend',`<div class="lightbox" onclick="this.remove()"><img src="${src}" alt="photo"/></div>`);
+}
 function autoMatchInventory(){
   const q=(document.getElementById('txn-item').value||'').trim();
   const match=q?resolveItem(q):null;
@@ -829,8 +965,22 @@ function saveEventTxn(eventId){
     txn.purchasePrice=parseFloat(document.getElementById('txn-trade-gave-val').value)||0;
   }
   if(!event.transactions)event.transactions=[];
-  event.transactions.push(txn);
-  save();closeModal();renderAll();
+  // Attach photo if one was selected
+  const photoInput=document.getElementById('txn-photo-input');
+  if(photoInput&&photoInput.files&&photoInput.files[0]){
+    const file=photoInput.files[0];
+    const reader=new FileReader();
+    reader.onload=function(ev){
+      txn.photo=ev.target.result;
+      event.transactions.push(txn);
+      save();renderAll();
+    };
+    reader.readAsDataURL(file);
+  } else {
+    event.transactions.push(txn);
+    save();renderAll();
+  }
+  closeModal();
   const typeLabel=type==='sale'?`Sale logged — added to Sales tab${linkedItem?' · Stock: '+linkedItem.stock+' remaining':''} ✓`:type==='purchase'?`Purchase logged — added to Costs tab & inventory ✓`:'Trade logged ✓';
   showToast(typeLabel);
 }
@@ -930,7 +1080,7 @@ function saveItem(){
   const sku=getNextSku();
   if(!state.inventory)state.inventory=[];
   state.inventory.push({id:Date.now(),name,sku,skuType:document.getElementById('m-skutype').value,price:parseFloat(document.getElementById('m-price').value)||0,costBasis:parseFloat(document.getElementById('m-cost').value)||0,stock:parseInt(document.getElementById('m-stock').value)||0});
-  save();closeModal();renderAll();showToast(`Item added — SKU #${sku} assigned ✓`);
+  save();closeModal();renderAll();setTimeout(takeSnapshot,500);showToast(`Item added — SKU #${sku} assigned ✓`);
 }
 function saveCost(){const desc=document.getElementById('m-desc').value.trim();const amount=parseFloat(document.getElementById('m-costamt').value);if(!desc||!amount||isNaN(amount)){alert('Please fill in description and amount.');return;}if(!state.costs)state.costs=[];state.costs.push({id:Date.now(),desc,amount,date:document.getElementById('m-costdate').value,cat:document.getElementById('m-costcat').value});save();closeModal();renderCosts();renderKPIs();showToast('Expense added ✓');}
 function saveEvent(){const name=document.getElementById('m-ename').value.trim();if(!name){alert('Please enter a show name.');return;}if(!state.events)state.events=[];state.events.push({id:Date.now(),name,location:document.getElementById('m-eloc').value.trim(),date:document.getElementById('m-edate').value,tableFee:parseFloat(document.getElementById('m-efee').value)||0,notes:document.getElementById('m-enotes').value.trim(),transactions:[]});save();closeModal();renderEvents();showToast('Show logged — add transactions to build revenue ✓');}
@@ -984,6 +1134,144 @@ function renderCharts(){
   if(Object.keys(typeTotals).length){catChart=new Chart(ctx2,{type:'doughnut',data:{labels:Object.keys(typeTotals).map(t=>PI(t).label),datasets:[{data:Object.values(typeTotals),backgroundColor:Object.keys(typeTotals).map(t=>PI(t).color)}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:txtColor,font:{size:11},boxWidth:11}}}}});}
   else{catChart=null;ctx2.clearRect(0,0,9999,9999);ctx2.fillStyle=txtColor;ctx2.font='12px sans-serif';ctx2.textAlign='center';ctx2.fillText('No data for this period',150,80);}
 }
+// ── Value snapshot system ──
+function takeSnapshot(){
+  const{retailValue,costValue,potentialProfit,totalUnits}=calcInvValues();
+  const today=new Date().toISOString().slice(0,10);
+  if(!state.valueSnapshots)state.valueSnapshots=[];
+  // Only one snapshot per day
+  const existing=state.valueSnapshots.find(s=>s.date===today);
+  if(existing){
+    // Update today's snapshot with latest values
+    existing.retail=retailValue;existing.cost=costValue;existing.profit=potentialProfit;existing.units=totalUnits;
+  } else {
+    state.valueSnapshots.push({id:Date.now(),date:today,retail:retailValue,cost:costValue,profit:potentialProfit,units:totalUnits});
+  }
+  // Keep max 365 snapshots
+  state.valueSnapshots.sort((a,b)=>a.date.localeCompare(b.date));
+  if(state.valueSnapshots.length>365)state.valueSnapshots=state.valueSnapshots.slice(-365);
+  save();
+}
+function manualSnapshot(){
+  // Force a new snapshot for today (overwrite)
+  if(!state.valueSnapshots)state.valueSnapshots=[];
+  const today=new Date().toISOString().slice(0,10);
+  state.valueSnapshots=state.valueSnapshots.filter(s=>s.date!==today);
+  const{retailValue,costValue,potentialProfit,totalUnits}=calcInvValues();
+  state.valueSnapshots.push({id:Date.now(),date:today,retail:retailValue,cost:costValue,profit:potentialProfit,units:totalUnits});
+  state.valueSnapshots.sort((a,b)=>a.date.localeCompare(b.date));
+  save();renderValueHistory();showToast('Snapshot saved ✓');
+}
+function clearSnapshots(){
+  if(!confirm('Clear all value history snapshots?'))return;
+  state.valueSnapshots=[];save();renderValueHistory();showToast('Value history cleared');
+}
+function setVhRange(days,el){
+  vhRange=days;
+  document.querySelectorAll('#vh-7,#vh-30,#vh-90,#vh-all').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  renderValueHistory();
+}
+function getVhData(){
+  const snaps=(state.valueSnapshots||[]).sort((a,b)=>a.date.localeCompare(b.date));
+  if(!vhRange)return snaps;
+  const cutoff=new Date();cutoff.setDate(cutoff.getDate()-vhRange);
+  const cutoffStr=cutoff.toISOString().slice(0,10);
+  return snaps.filter(s=>s.date>=cutoffStr);
+}
+function renderValueHistory(){
+  const snaps=getVhData();
+  const all=(state.valueSnapshots||[]);
+  const el=document.getElementById('vh-kpis');
+  const tbl=document.getElementById('vh-table');
+  if(!el)return;
+
+  // KPIs
+  const latest=all.length?all[all.length-1]:null;
+  const prev=all.length>1?all[all.length-2]:null;
+  const first=snaps.length?snaps[0]:null;
+  const last=snaps.length?snaps[snaps.length-1]:null;
+  const currentRetail=latest?latest.retail:0;
+  const currentProfit=latest?latest.profit:0;
+  const changeInRange=snaps.length>1?(last.retail-first.retail):0;
+  const changePct=snaps.length>1&&first.retail>0?((changeInRange/first.retail)*100).toFixed(1):null;
+  const dayChange=latest&&prev?(latest.retail-prev.retail):null;
+
+  el.innerHTML=`
+    <div class="kpi highlight"><label>Current retail value</label><div class="val" style="color:#fbbf24">$${currentRetail.toFixed(2)}</div><div class="sub">${all.length} snapshot${all.length!==1?'s':''} total</div></div>
+    <div class="kpi"><label>Current potential profit</label><div class="val ${currentProfit>=0?'profit-pos':'profit-neg'}">$${currentProfit.toFixed(2)}</div><div class="sub">retail minus cost basis</div></div>
+    <div class="kpi"><label>Change in range</label><div class="val ${changeInRange>=0?'profit-pos':'profit-neg'}">${changeInRange>=0?'+':''}$${changeInRange.toFixed(2)}</div><div class="sub">${changePct!==null?(changeInRange>=0?'+':'')+changePct+'%':'—'}</div></div>
+    <div class="kpi"><label>Since last snapshot</label><div class="val ${dayChange===null?'':dayChange>=0?'profit-pos':'profit-neg'}">${dayChange===null?'—':(dayChange>=0?'+':'')+'$'+dayChange.toFixed(2)}</div></div>
+  `;
+
+  // Chart
+  const ctx=document.getElementById('vhChart');
+  if(!ctx)return;
+  const txtColor=state.dark?'#8b909e':'#6b7280';
+  const gridColor=state.dark?'rgba(255,255,255,.07)':'rgba(0,0,0,.07)';
+  if(vhChart)vhChart.destroy();
+  if(!snaps.length){
+    const c=ctx.getContext('2d');c.clearRect(0,0,9999,9999);
+    c.fillStyle=txtColor;c.font='13px sans-serif';c.textAlign='center';
+    c.fillText('No snapshots yet — open the dashboard daily to build history',ctx.offsetWidth/2||200,110);
+    tbl.innerHTML='<div class="empty">No snapshots in this range.</div>';
+    return;
+  }
+  vhChart=new Chart(ctx,{
+    type:'line',
+    data:{
+      labels:snaps.map(s=>new Date(s.date).toLocaleDateString('en-US',{month:'short',day:'numeric'})),
+      datasets:[
+        {label:'Retail Value',data:snaps.map(s=>s.retail),borderColor:'#fbbf24',backgroundColor:'rgba(251,191,36,.1)',tension:.3,fill:true,pointRadius:snaps.length>30?2:4,pointHoverRadius:6,borderWidth:2},
+        {label:'Cost Basis',data:snaps.map(s=>s.cost),borderColor:'#60a5fa',backgroundColor:'rgba(96,165,250,.07)',tension:.3,fill:false,pointRadius:snaps.length>30?2:4,pointHoverRadius:6,borderWidth:2},
+        {label:'Potential Profit',data:snaps.map(s=>s.profit),borderColor:'#4ade80',backgroundColor:'rgba(74,222,128,.07)',tension:.3,fill:false,pointRadius:snaps.length>30?2:4,pointHoverRadius:6,borderWidth:1.5,borderDash:[4,3]}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{labels:{color:txtColor,font:{size:11},boxWidth:12}},
+        tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: $${ctx.parsed.y.toFixed(2)}`}}
+      },
+      scales:{
+        x:{ticks:{color:txtColor,font:{size:10},maxTicksLimit:10},grid:{color:gridColor}},
+        y:{ticks:{color:txtColor,font:{size:11},callback:v=>'$'+v.toFixed(0)},grid:{color:gridColor}}
+      }
+    }
+  });
+
+  // Snapshot table (most recent first)
+  const sorted=[...snaps].reverse();
+  tbl.innerHTML=`<table><thead><tr><th>Date</th><th>Retail value</th><th>Cost basis</th><th>Potential profit</th><th>Units</th><th>Change</th></tr></thead><tbody>`+
+    sorted.map((s,i)=>{
+      const nextSnap=i<sorted.length-1?sorted[i+1]:null;
+      const delta=nextSnap?(s.retail-nextSnap.retail):null;
+      const deltaHtml=delta===null?'<span style="color:var(--pk-muted)">—</span>':`<span class="${delta>0?'vh-delta-pos':delta<0?'vh-delta-neg':'vh-delta-neu'}">${delta>0?'+':''}$${delta.toFixed(2)}</span>`;
+      return`<tr>
+        <td>${new Date(s.date).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'})}</td>
+        <td style="color:#fbbf24;font-weight:500">$${s.retail.toFixed(2)}</td>
+        <td style="color:#60a5fa">$${s.cost.toFixed(2)}</td>
+        <td class="${s.profit>=0?'profit-pos':'profit-neg'}">$${s.profit.toFixed(2)}</td>
+        <td>${s.units}</td>
+        <td>${deltaHtml}</td>
+      </tr>`;
+    }).join('')+'</tbody></table>';
+}
+
+function updateTokenStatus(){
+  const el=document.getElementById('gh-token-status');
+  if(!el)return;
+  if(GITHUB_PAT){
+    el.style.background='rgba(74,222,128,.12)';
+    el.style.color='#4ade80';
+    el.innerHTML='✓ GitHub token configured — data syncs automatically';
+  } else {
+    el.style.background='rgba(251,191,36,.12)';
+    el.style.color='#fbbf24';
+    el.innerHTML='⚠ No GitHub token — data saves locally only. See setup instructions below.';
+  }
+}
 function renderAll(){renderKPIs();renderRecentSales();renderSalesTable();renderInventory();renderCosts();renderEvents();setTimeout(renderCharts,100);}
 
 function deleteSale(id){state.sales=(state.sales||[]).filter(s=>s.id!=id);save();renderAll();}
@@ -1013,39 +1301,44 @@ function importItemCSV(input){
 }
 function exportBackup(){const a=document.createElement('a');a.href='data:application/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(state,null,2));a.download='pokeshop-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();}
 function importBackup(input){const file=input.files[0];if(!file)return;const r=new FileReader();r.onload=e=>{try{state={...state,...JSON.parse(e.target.result)};save();renderAll();showToast('Backup restored ✓');}catch(err){alert('Invalid backup file.');}};r.readAsText(file);input.value='';}
-function clearAllData(){if(!confirm('Delete ALL data from Firebase?'))return;state={...state,sales:[],inventory:[],costs:[],events:[],nextSku:1};save();renderAll();showToast('All data cleared');}
+function clearAllData(){
+  const mc=document.getElementById('modal-container');
+  mc.innerHTML=`<div class="modal-bg"><div class="confirm-modal">
+    <h3>🗑 Clear All Data?</h3>
+    <p>This will permanently delete all your sales, inventory, events, and costs from Firebase. This cannot be undone.</p>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="confirm-modal btn-danger" onclick="confirmClearAll()">Yes, delete everything</button>
+    </div>
+  </div></div>`;
+}
+function confirmClearAll(){
+  state={...state,sales:[],inventory:[],costs:[],events:[],nextSku:1};
+  save();closeModal();renderAll();showToast('All data cleared');
+}
 function generateReport(){window.print();}
 
 async function init(){
   applyTheme();
-  setLoading('Connecting to Firebase…');
+  setLoading('Loading from GitHub…');
 
-  // Firebase scripts load synchronously in <head>, so _fbLoad is already defined.
-  // We just verify it exists; if not (e.g. CDN blocked), fall back gracefully.
-  const fbConnected = typeof window._fbLoad === 'function';
-  if(!fbConnected){
-    console.warn('Firebase SDK not loaded — CDN may be blocked. Running in local-only mode.');
+  // REST API is always available — no SDK to wait for
+  fbReady = true;
+
+  // Try Firebase first, fall back to localStorage if offline
+  let cloudLoaded = false;
+  try {
+    cloudLoaded = await loadFromFirebase();
+  } catch(e) {
+    console.warn('Firebase unreachable:', e);
   }
 
-  if(fbConnected){
-    fbReady=true;
-    setLoading('Loading your data…');
-    try {
-      const cloudLoaded=await loadFromFirebase();
-      if(!cloudLoaded){
-        setLoading('No cloud data found — checking local backup…');
-        localLoad();
-      }
-    } catch(e) {
-      console.error('Firebase load error:',e);
-      localLoad();
-    }
-  } else {
-    // Firebase timed out — load from local storage and show offline indicator
-    setLoading('Firebase offline — loading local data…');
+  if (!cloudLoaded) {
     localLoad();
-    setSyncStatus('error');
-    showToast('⚠ Firebase offline — running on local data. Check your connection.');
+    if (!navigator.onLine) {
+      setSyncStatus('error');
+      showToast('⚠ No token set or offline — showing local data only.');
+    }
   }
 
   recalcNextSku();
