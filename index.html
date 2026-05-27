@@ -394,6 +394,7 @@ tr:hover td{background:var(--pk-surface2)}
       <p style="font-size:12px;color:var(--pk-muted);margin-bottom:12px">Event purchases appear here automatically <span class="auto-badge">auto</span> · Purchasing an inventory item adjusts stock</p>
       <div class="btn-row">
         <button class="btn-primary" onclick="openModal('addCost')">+ Add expense</button>
+        <button class="btn-primary" style="background:#1a3fa0" onclick="openModal('addPurchase')">🛒 Add purchase</button>
       </div>
       <div class="filter-row">
         <input type="text" id="cost-search" placeholder="Search expenses…" oninput="renderCosts()" style="flex:1;min-width:120px"/>
@@ -1059,6 +1060,40 @@ function openModal(type){
   </div></div>`;}
   else if(type==='addCost'){html=`<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>Add expense <button onclick="closeModal()" style="background:none;border:none;cursor:pointer;color:var(--pk-muted);font-size:18px">✕</button></h3><label>Description</label><input id="m-desc" type="text" placeholder="e.g. Table fee"/><label>Category</label><select id="m-costcat"><option>Table fees</option><option>Gas</option><option>Shipping</option><option>Purchase</option><option>Supplies</option><option>Other</option></select><label>Amount ($)</label><input id="m-costamt" type="number" min="0" step="0.01" placeholder="0.00"/><label>Date</label><input id="m-costdate" type="date" value="${today}"/><div class="btn-row"><button class="btn-secondary" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="saveCost()">Add expense</button></div></div></div>`;}
   else if(type==='addEvent'){html=`<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>Log card show <button onclick="closeModal()" style="background:none;border:none;cursor:pointer;color:var(--pk-muted);font-size:18px">✕</button></h3><p style="font-size:11px;color:var(--pk-muted);margin-bottom:4px">Revenue is calculated automatically from your transaction log.</p><label>Show name</label><input id="m-ename" type="text" placeholder="e.g. Madison Card Show"/><label>Location</label><input id="m-eloc" type="text" placeholder="e.g. Madison, WI"/><label>Date</label><input id="m-edate" type="date" value="${today}"/><label>Table fee ($)</label><input id="m-efee" type="number" min="0" step="0.01" placeholder="0.00"/><label>Notes (optional)</label><input id="m-enotes" type="text" placeholder="e.g. Great crowd"/><div class="btn-row"><button class="btn-secondary" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="saveEvent()">Save show</button></div></div></div>`;}
+  else if(type==='addPurchase'){
+    const invOpts=`<option value="">— Create new inventory item —</option>`+(state.inventory||[]).map(i=>`<option value="${i.id}">SKU #${i.sku} · ${i.name} (${i.stock} in stock)</option>`).join('');
+    const payOpts2=PAYMENT_TYPES.map(p=>`<option value="${p.value}">${p.label}</option>`).join('');
+    html=`<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">
+      <h3>🛒 Add purchase <button onclick="closeModal()" style="background:none;border:none;cursor:pointer;color:var(--pk-muted);font-size:18px">✕</button></h3>
+      <p style="font-size:11px;color:var(--pk-muted);margin-bottom:8px">Purchase is logged to Costs tab and added to Inventory automatically.</p>
+      <label>Item / card name</label>
+      <input id="ap-item" type="text" placeholder="e.g. Charizard ex PSA 10" oninput="apAutoMatch()"/>
+      <div id="ap-inv-match" style="margin-top:4px"></div>
+      <div class="inv-link-row">
+        <label>Link to existing inventory item (or leave blank to create new)</label>
+        <select id="ap-inv-link" onchange="apInvChange()">${invOpts}</select>
+      </div>
+      <label>Purchase price / cost basis ($)</label>
+      <input id="ap-cost" type="number" min="0" step="0.01" placeholder="0.00"/>
+      <label>Sale price ($) — for inventory listing</label>
+      <input id="ap-price" type="number" min="0" step="0.01" placeholder="0.00 (optional)"/>
+      <label>SKU type</label>
+      <select id="ap-skutype">
+        <option value="single">Single</option>
+        <option value="sealed">Sealed</option>
+        <option value="other">Other</option>
+      </select>
+      <label>Quantity</label>
+      <input id="ap-qty" type="number" min="1" step="1" value="1"/>
+      <label>Payment method</label>
+      <select id="ap-payment">${payOpts2}</select>
+      <label>Notes (optional)</label>
+      <input id="ap-notes" type="text" placeholder="e.g. Bought from local seller"/>
+      <label>Date</label>
+      <input id="ap-date" type="date" value="${today}"/>
+      <div class="btn-row"><button class="btn-secondary" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="savePurchase()">Add purchase</button></div>
+    </div></div>`;
+  }
   else if(type==='pasteExcel'){html=`<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>Paste from Excel <button onclick="closeModal()" style="background:none;border:none;cursor:pointer;color:var(--pk-muted);font-size:18px">✕</button></h3><label>Data type</label><select id="m-pastetype"><option>Sales</option><option>Costs / Expenses</option></select><label>Paste here</label><textarea id="m-paste" rows="5" style="width:100%;font-size:11px;font-family:monospace;padding:7px;border:0.5px solid var(--pk-border);border-radius:var(--radius-sm);background:var(--pk-surface2);color:var(--pk-text)"></textarea><p style="font-size:11px;color:var(--pk-muted);margin-top:5px">Sales: Date, Item/SKU, Payment, Amount</p><div class="btn-row"><button class="btn-secondary" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="previewPaste()">Import</button></div></div></div>`;}
   mc.innerHTML=html;
 }
@@ -1080,6 +1115,61 @@ function saleInvChange(){
   const amtEl=document.getElementById('m-amount');if(amtEl&&!amtEl.value)amtEl.value=(item.price||0).toFixed(2);
 }
 
+function apAutoMatch(){
+  const q=(document.getElementById('ap-item').value||'').trim();
+  const match=q?resolveItem(q):null;
+  const el=document.getElementById('ap-inv-match');
+  if(match){
+    el.innerHTML=`<div class="inv-match-info">✓ Matched: SKU #${match.sku} · ${match.name} · ${match.stock} in stock</div>`;
+    document.getElementById('ap-inv-link').value=match.id;
+    apInvChange();
+  } else {el.innerHTML='';}
+}
+function apInvChange(){
+  const selId=document.getElementById('ap-inv-link').value;
+  if(!selId)return;
+  const item=(state.inventory||[]).find(i=>i.id==selId);
+  if(!item)return;
+  const nameEl=document.getElementById('ap-item');
+  if(nameEl&&!nameEl.value.trim())nameEl.value=item.name;
+  const priceEl=document.getElementById('ap-price');
+  if(priceEl&&!priceEl.value)priceEl.value=(item.price||0).toFixed(2);
+  const costEl=document.getElementById('ap-cost');
+  if(costEl&&!costEl.value)costEl.value=(item.costBasis||0).toFixed(2);
+}
+function savePurchase(){
+  const itemName=(document.getElementById('ap-item').value||'').trim();
+  if(!itemName){alert('Please enter an item name.');return;}
+  const costAmt=parseFloat(document.getElementById('ap-cost').value)||0;
+  if(!costAmt){alert('Please enter a purchase price.');return;}
+  const salePrice=parseFloat(document.getElementById('ap-price').value)||0;
+  const qty=parseInt(document.getElementById('ap-qty').value)||1;
+  const payment=document.getElementById('ap-payment').value;
+  const notes=(document.getElementById('ap-notes').value||'').trim();
+  const date=document.getElementById('ap-date').value;
+  const skuType=document.getElementById('ap-skutype').value;
+  const linkedId=document.getElementById('ap-inv-link').value||null;
+  const linkedItem=linkedId?(state.inventory||[]).find(i=>i.id==linkedId):null;
+  // Log to costs tab
+  if(!state.costs)state.costs=[];
+  state.costs.push({id:Date.now(),desc:itemName,amount:costAmt*qty,date,cat:'Purchase',notes,source:'manual'});
+  let sku=null;
+  if(linkedItem){
+    // Add to existing inventory
+    linkedItem.stock=(linkedItem.stock||0)+qty;
+    if(salePrice)linkedItem.price=salePrice;
+    linkedItem.costBasis=costAmt;
+    sku=linkedItem.sku;
+    showToast(`Purchase added · SKU #${sku} stock: ${linkedItem.stock} ✓`);
+  } else {
+    // Create new inventory item
+    sku=getNextSku();
+    if(!state.inventory)state.inventory=[];
+    state.inventory.push({id:Date.now()+1,name:itemName,sku,skuType,price:salePrice||costAmt,costBasis:costAmt,stock:qty});
+    showToast(`Purchase added · New inventory item SKU #${sku} created ✓`);
+  }
+  save();closeModal();renderAll();setTimeout(takeSnapshot,500);
+}
 function closeModal(){document.getElementById('modal-container').innerHTML='';}
 
 function saveSale(){
