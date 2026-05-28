@@ -383,6 +383,7 @@ tr:hover td{background:var(--pk-surface2)}
           <option value="all">All SKU types</option>
           <option value="sealed">Sealed</option>
           <option value="single">Single</option>
+          <option value="graded">Graded</option>
           <option value="other">Other</option>
         </select>
         <button class="btn-secondary" onclick="clearInvFilter()">Clear</button>
@@ -862,7 +863,7 @@ function openAddTxn(eventId){
     <div id="txn-purchase-fields" style="display:none">
       <label>Purchase price / cost basis ($)</label><input id="txn-purchase-price" type="number" min="0" step="0.01" placeholder="0.00"/>
       <label>Sale price ($) — for inventory listing</label><input id="txn-purchase-sale-price" type="number" min="0" step="0.01" placeholder="0.00 (optional)"/>
-      <label>SKU type</label><select id="txn-purchase-skutype"><option value="single">Single</option><option value="sealed">Sealed</option><option value="other">Other</option></select>
+      <label>SKU type</label><select id="txn-purchase-skutype"><option value="single">Single</option><option value="sealed">Sealed</option><option value="graded">Graded</option><option value="other">Other</option></select>
       <label>Quantity purchased</label><input id="txn-purchase-qty" type="number" min="1" step="1" value="1" placeholder="1"/>
       <label>Payment method</label><select id="txn-purchase-payment">${payOpts}</select>
     </div>
@@ -1052,7 +1053,7 @@ function openModal(type){
   else if(type==='addItem'){html=`<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>Add inventory item <button onclick="closeModal()" style="background:none;border:none;cursor:pointer;color:var(--pk-muted);font-size:18px">✕</button></h3>
     <p style="font-size:11px;color:var(--pk-muted);margin-bottom:4px">A unique SKU will be assigned automatically.</p>
     <label>Name</label><input id="m-name" type="text" placeholder="e.g. Scarlet & Violet Booster Box"/>
-    <label>SKU type</label><select id="m-skutype"><option value="sealed">Sealed</option><option value="single">Single</option><option value="other">Other</option></select>
+    <label>SKU type</label><select id="m-skutype"><option value="sealed">Sealed</option><option value="single">Single</option><option value="graded">Graded</option><option value="other">Other</option></select>
     <label>Sale price ($)</label><input id="m-price" type="number" min="0" step="0.01" placeholder="0.00"/>
     <label>Cost basis ($)</label><input id="m-cost" type="number" min="0" step="0.01" placeholder="0.00"/>
     <label>Stock quantity</label><input id="m-stock" type="number" min="0" step="1" placeholder="0"/>
@@ -1081,6 +1082,7 @@ function openModal(type){
       <select id="ap-skutype">
         <option value="single">Single</option>
         <option value="sealed">Sealed</option>
+        <option value="graded">Graded</option>
         <option value="other">Other</option>
       </select>
       <label>Quantity</label>
@@ -1393,6 +1395,7 @@ function openEditItem(itemId){
     <select id="ei-skutype">
       <option value="single" ${item.skuType==='single'?'selected':''}>Single</option>
       <option value="sealed" ${item.skuType==='sealed'?'selected':''}>Sealed</option>
+      <option value="graded" ${item.skuType==='graded'?'selected':''}>Graded</option>
       <option value="other" ${item.skuType==='other'?'selected':''}>Other</option>
     </select>
     <label>Sale price ($)</label>
