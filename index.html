@@ -18,7 +18,7 @@ const GH_FILE    = "data.json";               // file that stores your data in t
 const GH_API     = `https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/${GH_FILE}`;
 
 // ── IMPORTANT: paste your GitHub Personal Access Token between the quotes below ──
-const GITHUB_PAT = "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";  // <-- paste token here
+const GITHUB_PAT = "";  // <-- paste token here
 
 function ghHeaders(){
   return {
@@ -310,6 +310,7 @@ tr:hover td{background:var(--pk-surface2)}
   </div>
 
   <div id="main-view" style="display:none">
+    <div id="no-token-banner" style="display:none;background:rgba(251,191,36,.15);border-bottom:0.5px solid rgba(251,191,36,.3);padding:8px 16px;font-size:12px;color:#fbbf24;text-align:center">⚠ No GitHub token — data is local only and won't sync across devices. Go to Report tab for setup instructions.</div>
     <div class="tabs">
       <div class="tab active" onclick="switchTab('overview',this)">📊 Overview</div>
       <div class="tab" onclick="switchTab('sales',this)">🧾 Sales</div>
@@ -561,7 +562,24 @@ function startRealtimeListener(){
 function localSave(){try{localStorage.setItem('pokeshop_fb_v4',JSON.stringify(state));}catch(e){}}
 function localLoad(){try{const d=localStorage.getItem('pokeshop_fb_v4');if(d){state={...state,...JSON.parse(d)};return true;}}catch(e){}return false;}
 function save(){localSave();clearTimeout(syncTimeout);syncTimeout=setTimeout(saveToFirebase,600);}
-async function manualSync(){showToast('Syncing…');ignoreNextUpdate=false;await saveToFirebase();showToast('Synced ✓');}
+async function manualSync(){
+  if(!GITHUB_PAT||GITHUB_PAT.length<10){
+    showToast('⚠ No GitHub token — open Report tab for setup instructions');
+    updateTokenStatus();
+    return;
+  }
+  showToast('Saving to GitHub…');
+  setSyncStatus('syncing');
+  ignoreNextUpdate=false;
+  const ok=await window._fbSave(JSON.parse(JSON.stringify(state)));
+  if(ok){
+    setSyncStatus('synced');
+    showToast('Saved to GitHub ✓ — all devices will sync within 20 seconds');
+  } else {
+    setSyncStatus('error');
+    showToast('⚠ Save failed — check your GitHub token is correct in index.html');
+  }
+}
 
 function applyTheme(){
   const app=document.getElementById('app');app.classList.toggle('pk-dark',state.dark);app.classList.toggle('pk-light',!state.dark);
@@ -577,6 +595,8 @@ function showMain(){
   setSyncStatus('synced');startRealtimeListener();renderAll();
   // Take daily snapshot after data loads
   setTimeout(takeSnapshot,1200);
+  // Show token status immediately on load
+  setTimeout(updateTokenStatus,500);
 }
 function switchTab(name,el){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
@@ -1371,15 +1391,18 @@ function renderValueHistory(){
 function updateTokenStatus(){
   const el=document.getElementById('gh-token-status');
   if(!el)return;
-  if(GITHUB_PAT){
+  if(GITHUB_PAT && GITHUB_PAT.length > 10){
     el.style.background='rgba(74,222,128,.12)';
     el.style.color='#4ade80';
     el.innerHTML='✓ GitHub token configured — data syncs automatically';
   } else {
     el.style.background='rgba(251,191,36,.12)';
     el.style.color='#fbbf24';
-    el.innerHTML='⚠ No GitHub token — data saves locally only. See setup instructions below.';
+    el.innerHTML='⚠ No GitHub token set — data is saving locally only and will not sync across devices. Paste your token into index.html to enable sync.';
   }
+  // Show/hide top banner
+  const banner=document.getElementById('no-token-banner');
+  if(banner) banner.style.display=(GITHUB_PAT&&GITHUB_PAT.length>10)?'none':'block';
 }
 function renderAll(){renderKPIs();renderRecentSales();renderSalesTable();renderInventory();renderCosts();renderEvents();setTimeout(renderCharts,100);}
 
