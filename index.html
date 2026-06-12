@@ -11,14 +11,14 @@
 <script>
 // ── GitHub API storage — data.json lives in your repo, works from any device ──
 // SETUP: Replace these three values with your own
-const GH_USER    = "carddealerone";           // your GitHub username
-const GH_REPO    = "pokeshop-dashboard";      // your repo name
-const GH_TOKEN   = "";                        // GitHub Personal Access Token (filled in below)
-const GH_FILE    = "data.json";               // file that stores your data in the repo
-const GH_API     = `https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/${GH_FILE}`;
+const GH_USER = "carddealerone";
+const GH_REPO = "pokeshop-dashboard";
+const GH_FILE = "data.json";
+const GH_API  = `https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/${GH_FILE}`;
 
-// ── IMPORTANT: paste your GitHub Personal Access Token between the quotes below ──
-const GITHUB_PAT = "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";  // <-- paste token here
+// ── PASTE YOUR GITHUB TOKEN BETWEEN THESE QUOTES ──
+const GITHUB_PAT = "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";
+// ─────────────────────────────────────────────────
 
 function ghHeaders(){
   return {
@@ -29,7 +29,7 @@ function ghHeaders(){
 }
 
 window._fbSave = async function(data) {
-  if(!GITHUB_PAT){ console.warn("No GitHub token set"); return false; }
+  if(!GITHUB_PAT||GITHUB_PAT.length<10){ console.warn("No GitHub token"); return false; }
   try {
     // Get current file SHA (needed for updates)
     let sha = null;
@@ -46,7 +46,7 @@ window._fbSave = async function(data) {
 };
 
 window._fbLoad = async function() {
-  if(!GITHUB_PAT){ console.warn("No GitHub token — loading local only"); return null; }
+  if(!GITHUB_PAT||GITHUB_PAT.length<10){ console.warn("No GitHub token"); return null; }
   try {
     const res = await fetch(GH_API, { headers: ghHeaders() });
     if(!res.ok) return null;
@@ -60,7 +60,7 @@ window._fbLoad = async function() {
 
 // Poll for cross-device updates every 20 seconds
 window._fbListen = function(callback) {
-  if(!GITHUB_PAT) return;
+  if(!GITHUB_PAT||GITHUB_PAT.length<10) return;
   let lastSha = null;
   setInterval(async () => {
     try {
@@ -487,6 +487,7 @@ tr:hover td{background:var(--pk-surface2)}
           <div id="gh-token-status" style="font-size:12px;border-radius:var(--radius-sm);padding:8px 10px;margin-bottom:10px;background:var(--pk-surface2)">Checking token…</div>
           <p style="font-size:12px;color:var(--pk-muted);line-height:1.6;margin-bottom:12px">Data saves to your GitHub repo and loads on any device at <strong>carddealerone.github.io/pokeshop-dashboard</strong></p>
           <button class="btn-secondary" style="width:100%;margin-bottom:7px" onclick="manualSync()">☁ Save to GitHub now</button>
+          <button class="btn-secondary" style="width:100%;margin-bottom:7px" onclick="testGitHubConnection()">🔍 Test GitHub connection</button>
           <button class="btn-secondary" style="width:100%;margin-bottom:7px" onclick="exportBackup()">⬇ Export backup (.json)</button>
           <button class="btn-secondary" style="width:100%" onclick="document.getElementById('bk-import').click()">⬆ Restore from backup</button>
           <input type="file" id="bk-import" accept=".json" style="display:none" onchange="importBackup(this)"/>
@@ -562,6 +563,32 @@ function startRealtimeListener(){
 function localSave(){try{localStorage.setItem('pokeshop_fb_v4',JSON.stringify(state));}catch(e){}}
 function localLoad(){try{const d=localStorage.getItem('pokeshop_fb_v4');if(d){state={...state,...JSON.parse(d)};return true;}}catch(e){}return false;}
 function save(){localSave();clearTimeout(syncTimeout);syncTimeout=setTimeout(saveToFirebase,600);}
+async function testGitHubConnection(){
+  if(!GITHUB_PAT||GITHUB_PAT.length<10){
+    showToast('⚠ No token found in the file — see instructions below');
+    updateTokenStatus();
+    return;
+  }
+  showToast('Testing connection…');
+  try {
+    const res = await fetch(GH_API, { headers: ghHeaders() });
+    const status = res.status;
+    if(res.ok){
+      const j = await res.json();
+      showToast(`✓ Connected! data.json ${j.sha?'exists (SHA: '+j.sha.slice(0,7)+')':'not yet created'}`,4000);
+    } else if(status===401){
+      showToast('✗ Token rejected (401) — token may be expired or wrong',4000);
+    } else if(status===403){
+      showToast('✗ Permission denied (403) — token needs repo scope',4000);
+    } else if(status===404){
+      showToast('✓ Connected — data.json not created yet, hit "Save to GitHub now"',4000);
+    } else {
+      showToast(`✗ Error ${status} — check token and repo name`,4000);
+    }
+  } catch(e){
+    showToast('✗ Network error: '+e.message,4000);
+  }
+}
 async function manualSync(){
   if(!GITHUB_PAT||GITHUB_PAT.length<10){
     showToast('⚠ No GitHub token — open Report tab for setup instructions');
