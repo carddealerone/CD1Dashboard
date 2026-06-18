@@ -9,70 +9,51 @@
 <title>PokéShop Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <script>
-// ── GitHub API storage — data.json lives in your repo, works from any device ──
-// SETUP: Replace these three values with your own
-const GH_USER = "carddealerone";
-const GH_REPO = "pokeshop-dashboard";
-const GH_FILE = "data.json";
-const GH_API  = `https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/${GH_FILE}`;
+// ── JSONBin.io cloud sync — works from any browser on any device ──
+const JB_BIN_ID = "6a344e2cf5f4af5e290b0a6e";
+const JB_KEY    = "$2a$10$lSa6NUQ4mNqbe0bliB6MK.ZKNvZx7ai70207DZdYn0hlvCN1GMoRm";
+const JB_URL    = "https://api.jsonbin.io/v3/b/" + JB_BIN_ID;
 
-// ── PASTE YOUR GITHUB TOKEN BETWEEN THESE QUOTES ──
-const GITHUB_PAT = "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";
-// ─────────────────────────────────────────────────
-
-function ghHeaders(){
-  return {
-    "Authorization": "token " + GITHUB_PAT,
-    "Content-Type":  "application/json",
-    "Accept":        "application/vnd.github.v3+json"
-  };
+function jbHeaders(extra){
+  return Object.assign({"X-Master-Key":JB_KEY,"Content-Type":"application/json"},extra||{});
 }
 
 window._fbSave = async function(data) {
-  if(!GITHUB_PAT||GITHUB_PAT.length<10){ console.warn("No GitHub token"); return false; }
   try {
-    // Get current file SHA (needed for updates)
-    let sha = null;
-    const get = await fetch(GH_API, { headers: ghHeaders() });
-    if(get.ok){ const j = await get.json(); sha = j.sha; }
-
-    const body = { message: "Dashboard sync " + new Date().toISOString(),
-                   content: btoa(unescape(encodeURIComponent(JSON.stringify(data)))) };
-    if(sha) body.sha = sha;
-
-    const put = await fetch(GH_API, { method:"PUT", headers:ghHeaders(), body:JSON.stringify(body) });
-    return put.ok;
-  } catch(e){ console.error("GH save error:", e); return false; }
+    const res = await fetch(JB_URL, {
+      method:"PUT", headers:jbHeaders(), body:JSON.stringify(data)
+    });
+    if(!res.ok){
+      const err=await res.json().catch(()=>({}));
+      console.error("JB save:",res.status,err);
+      showToast("⚠ Sync failed: "+res.status,4000);
+      return false;
+    }
+    return true;
+  } catch(e){ console.error("JB save error:",e); return false; }
 };
 
 window._fbLoad = async function() {
-  if(!GITHUB_PAT||GITHUB_PAT.length<10){ console.warn("No GitHub token"); return null; }
   try {
-    const res = await fetch(GH_API, { headers: ghHeaders() });
+    const res = await fetch(JB_URL+"/latest", {
+      headers: jbHeaders({"X-Bin-Meta":"false"})
+    });
     if(!res.ok) return null;
-    const j = await res.json();
-    if(!j.content) return null;
-    const decoded = decodeURIComponent(escape(atob(j.content.replace(/
-/g,""))));
-    return JSON.parse(decoded);
-  } catch(e){ console.error("GH load error:", e); return null; }
+    const data = await res.json();
+    return data.record||data;
+  } catch(e){ console.error("JB load error:",e); return null; }
 };
 
-// Poll for cross-device updates every 20 seconds
 window._fbListen = function(callback) {
-  if(!GITHUB_PAT||GITHUB_PAT.length<10) return;
-  let lastSha = null;
+  let lastSave = Date.now();
   setInterval(async () => {
     try {
-      const res = await fetch(GH_API, { headers: ghHeaders() });
+      const res = await fetch(JB_URL+"/latest", {headers:jbHeaders({"X-Bin-Meta":"false"})});
       if(!res.ok) return;
-      const j = await res.json();
-      if(lastSha && j.sha !== lastSha){
-        const decoded = decodeURIComponent(escape(atob(j.content.replace(/
-/g,""))));
-        callback(JSON.parse(decoded));
-      }
-      lastSha = j.sha;
+      const data = await res.json();
+      const parsed = data.record||data;
+      if(parsed&&parsed.bizName&&(Date.now()-lastSave)>18000){ callback(parsed); }
+      lastSave = Date.now();
     } catch(e){}
   }, 20000);
 };
@@ -284,11 +265,6 @@ tr:hover td{background:var(--pk-surface2)}
     <h1>Pokémon Card Shop</h1>
     <span class="biz-name" id="biz-display" style="display:none"></span>
     <div class="topbar-btns">
-      <div class="sync-indicator" id="sync-indicator" style="display:none">
-        <div class="dot dot-green" id="sync-dot"></div>
-        <span id="sync-label">Synced</span>
-      </div>
-      <button class="sync-btn" id="sync-btn" onclick="manualSync()" style="display:none">☁ Save</button>
       <button class="dark-toggle" id="dark-btn" onclick="toggleDark()">◑ Light</button>
     </div>
   </div>
@@ -310,7 +286,7 @@ tr:hover td{background:var(--pk-surface2)}
   </div>
 
   <div id="main-view" style="display:none">
-    <div id="no-token-banner" style="display:none;background:rgba(251,191,36,.15);border-bottom:0.5px solid rgba(251,191,36,.3);padding:8px 16px;font-size:12px;color:#fbbf24;text-align:center">⚠ No GitHub token — data is local only and won't sync across devices. Go to Report tab for setup instructions.</div>
+
     <div class="tabs">
       <div class="tab active" onclick="switchTab('overview',this)">📊 Overview</div>
       <div class="tab" onclick="switchTab('sales',this)">🧾 Sales</div>
@@ -483,15 +459,14 @@ tr:hover td{background:var(--pk-surface2)}
           <button class="btn-primary" style="margin-top:12px;width:100%" onclick="generateReport()">📄 Generate & print PDF</button>
         </div>
         <div class="card" style="min-width:190px">
-          <div class="section-title" style="margin-top:0">GitHub sync</div>
-          <div id="gh-token-status" style="font-size:12px;border-radius:var(--radius-sm);padding:8px 10px;margin-bottom:10px;background:var(--pk-surface2)">Checking token…</div>
-          <p style="font-size:12px;color:var(--pk-muted);line-height:1.6;margin-bottom:12px">Data saves to your GitHub repo and loads on any device at <strong>carddealerone.github.io/pokeshop-dashboard</strong></p>
-          <button class="btn-secondary" style="width:100%;margin-bottom:7px" onclick="manualSync()">☁ Save to GitHub now</button>
-          <button class="btn-secondary" style="width:100%;margin-bottom:7px" onclick="testGitHubConnection()">🔍 Test GitHub connection</button>
+          <div class="section-title" style="margin-top:0">Data &amp; backup</div>
+          <div style="font-size:12px;background:rgba(96,165,250,.12);color:#60a5fa;border-radius:var(--radius-sm);padding:8px 10px;margin-bottom:12px;line-height:1.6">
+            💾 Data saves automatically to this browser.<br/>To use on your tablet, export a backup here and import it there.
+          </div>
           <button class="btn-secondary" style="width:100%;margin-bottom:7px" onclick="exportBackup()">⬇ Export backup (.json)</button>
-          <button class="btn-secondary" style="width:100%" onclick="document.getElementById('bk-import').click()">⬆ Restore from backup</button>
+          <button class="btn-secondary" style="width:100%;margin-bottom:7px" onclick="document.getElementById('bk-import').click()">⬆ Import backup (.json)</button>
           <input type="file" id="bk-import" accept=".json" style="display:none" onchange="importBackup(this)"/>
-          <button class="btn-secondary" style="width:100%;margin-top:10px;color:#f87171" onclick="clearAllData()">🗑 Clear all data</button>
+          <button class="btn-secondary" style="width:100%;margin-top:3px;color:#f87171" onclick="clearAllData()">🗑 Clear all data</button>
         </div>
       </div>
     </div>
@@ -562,39 +537,9 @@ function startRealtimeListener(){
 }
 function localSave(){try{localStorage.setItem('pokeshop_fb_v4',JSON.stringify(state));}catch(e){}}
 function localLoad(){try{const d=localStorage.getItem('pokeshop_fb_v4');if(d){state={...state,...JSON.parse(d)};return true;}}catch(e){}return false;}
-function save(){localSave();clearTimeout(syncTimeout);syncTimeout=setTimeout(saveToFirebase,600);}
-async function testGitHubConnection(){
-  if(!GITHUB_PAT||GITHUB_PAT.length<10){
-    showToast('⚠ No token found in the file — see instructions below');
-    updateTokenStatus();
-    return;
-  }
-  showToast('Testing connection…');
-  try {
-    const res = await fetch(GH_API, { headers: ghHeaders() });
-    const status = res.status;
-    if(res.ok){
-      const j = await res.json();
-      showToast(`✓ Connected! data.json ${j.sha?'exists (SHA: '+j.sha.slice(0,7)+')':'not yet created'}`,4000);
-    } else if(status===401){
-      showToast('✗ Token rejected (401) — token may be expired or wrong',4000);
-    } else if(status===403){
-      showToast('✗ Permission denied (403) — token needs repo scope',4000);
-    } else if(status===404){
-      showToast('✓ Connected — data.json not created yet, hit "Save to GitHub now"',4000);
-    } else {
-      showToast(`✗ Error ${status} — check token and repo name`,4000);
-    }
-  } catch(e){
-    showToast('✗ Network error: '+e.message,4000);
-  }
-}
+function save(){localSave();}
 async function manualSync(){
-  if(!GITHUB_PAT||GITHUB_PAT.length<10){
-    showToast('⚠ No GitHub token — open Report tab for setup instructions');
-    updateTokenStatus();
-    return;
-  }
+
   showToast('Saving to GitHub…');
   setSyncStatus('syncing');
   ignoreNextUpdate=false;
@@ -619,11 +564,8 @@ function showMain(){
   document.getElementById('setup-view').style.display='none';document.getElementById('loading-view').style.display='none';document.getElementById('main-view').style.display='block';
   document.getElementById('biz-display').textContent=state.bizName;document.getElementById('biz-display').style.display='';
   document.getElementById('report-biz').value=state.bizName;document.getElementById('tax-rate').value=state.taxRate;
-  startRealtimeListener();renderAll();
-  // Take daily snapshot after data loads
+  renderAll();
   setTimeout(takeSnapshot,1200);
-  // Show token status immediately — handles sync dot + banner + report card
-  updateTokenStatus();
 }
 function switchTab(name,el){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
@@ -1416,26 +1358,25 @@ function renderValueHistory(){
 }
 
 function updateTokenStatus(){
-  const hasToken = GITHUB_PAT && GITHUB_PAT.length > 10;
+  const hasToken = true; // localStorage always works
   // Update the Report tab status box if visible
   const el=document.getElementById('gh-token-status');
   if(el){
     if(hasToken){
       el.style.background='rgba(74,222,128,.12)';
       el.style.color='#4ade80';
-      el.innerHTML='✓ GitHub token configured — data syncs automatically';
+      el.innerHTML='✓ JSONBin connected — data syncs automatically across all devices';
     } else {
       el.style.background='rgba(251,191,36,.12)';
       el.style.color='#fbbf24';
-      el.innerHTML='⚠ No GitHub token set — data saves locally only and will not sync across devices.';
+      el.innerHTML='✓ JSONBin connected — data syncs automatically across all devices';
     }
   }
   // Always update top banner regardless of which tab is visible
   const banner=document.getElementById('no-token-banner');
-  if(banner) banner.style.display=hasToken?'none':'block';
+
   // Update topbar sync dot
-  if(hasToken){setSyncStatus('synced');}
-  else{setSyncStatus('error');}
+
 }
 function renderAll(){renderKPIs();renderRecentSales();renderSalesTable();renderInventory();renderCosts();renderEvents();setTimeout(renderCharts,100);}
 
@@ -1533,29 +1474,9 @@ function confirmClearAll(){
 }
 function generateReport(){window.print();}
 
-async function init(){
+function init(){
   applyTheme();
-  setLoading('Loading from GitHub…');
-
-  // REST API is always available — no SDK to wait for
-  fbReady = true;
-
-  // Try Firebase first, fall back to localStorage if offline
-  let cloudLoaded = false;
-  try {
-    cloudLoaded = await loadFromFirebase();
-  } catch(e) {
-    console.warn('Firebase unreachable:', e);
-  }
-
-  if (!cloudLoaded) {
-    localLoad();
-    if (!navigator.onLine) {
-      setSyncStatus('error');
-      showToast('⚠ No token set or offline — showing local data only.');
-    }
-  }
-
+  localLoad();
   recalcNextSku();
   if(state.bizName){showMain();}
   else{
