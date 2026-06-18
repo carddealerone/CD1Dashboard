@@ -619,11 +619,11 @@ function showMain(){
   document.getElementById('setup-view').style.display='none';document.getElementById('loading-view').style.display='none';document.getElementById('main-view').style.display='block';
   document.getElementById('biz-display').textContent=state.bizName;document.getElementById('biz-display').style.display='';
   document.getElementById('report-biz').value=state.bizName;document.getElementById('tax-rate').value=state.taxRate;
-  setSyncStatus('synced');startRealtimeListener();renderAll();
+  startRealtimeListener();renderAll();
   // Take daily snapshot after data loads
   setTimeout(takeSnapshot,1200);
-  // Show token status immediately on load
-  setTimeout(updateTokenStatus,500);
+  // Show token status immediately — handles sync dot + banner + report card
+  updateTokenStatus();
 }
 function switchTab(name,el){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
@@ -1416,20 +1416,26 @@ function renderValueHistory(){
 }
 
 function updateTokenStatus(){
+  const hasToken = GITHUB_PAT && GITHUB_PAT.length > 10;
+  // Update the Report tab status box if visible
   const el=document.getElementById('gh-token-status');
-  if(!el)return;
-  if(GITHUB_PAT && GITHUB_PAT.length > 10){
-    el.style.background='rgba(74,222,128,.12)';
-    el.style.color='#4ade80';
-    el.innerHTML='✓ GitHub token configured — data syncs automatically';
-  } else {
-    el.style.background='rgba(251,191,36,.12)';
-    el.style.color='#fbbf24';
-    el.innerHTML='⚠ No GitHub token set — data is saving locally only and will not sync across devices. Paste your token into index.html to enable sync.';
+  if(el){
+    if(hasToken){
+      el.style.background='rgba(74,222,128,.12)';
+      el.style.color='#4ade80';
+      el.innerHTML='✓ GitHub token configured — data syncs automatically';
+    } else {
+      el.style.background='rgba(251,191,36,.12)';
+      el.style.color='#fbbf24';
+      el.innerHTML='⚠ No GitHub token set — data saves locally only and will not sync across devices.';
+    }
   }
-  // Show/hide top banner
+  // Always update top banner regardless of which tab is visible
   const banner=document.getElementById('no-token-banner');
-  if(banner) banner.style.display=(GITHUB_PAT&&GITHUB_PAT.length>10)?'none':'block';
+  if(banner) banner.style.display=hasToken?'none':'block';
+  // Update topbar sync dot
+  if(hasToken){setSyncStatus('synced');}
+  else{setSyncStatus('error');}
 }
 function renderAll(){renderKPIs();renderRecentSales();renderSalesTable();renderInventory();renderCosts();renderEvents();setTimeout(renderCharts,100);}
 
